@@ -125,9 +125,9 @@ class Model(nn.Module):
         self.ln = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, vocab_size, bias=False)
 
-    def forward(self, x):
+    def forward(self, x, pos_offset=0):
         B, T = x.shape
-        pos = torch.arange(T, device=x.device)
+        pos = torch.arange(pos_offset, pos_offset + T, device=x.device)
         h = self.tok_emb(x) + self.pos_emb(pos)
         for blk in self.blocks:
             h = blk(h)
@@ -161,6 +161,7 @@ def main():
 
     batch_size = 32
     ctx_len = CTX_LEN_EVAL
+    train_ctx_len = 128
     model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.0)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
@@ -173,8 +174,9 @@ def main():
     step = 0
     model.train()
     while True:
-        x, y = get_batch(train_data, batch_size, ctx_len, device)
-        logits = model(x)
+        x, y = get_batch(train_data, batch_size, train_ctx_len, device)
+        pos_offset = int(torch.randint(0, ctx_len - train_ctx_len + 1, ()).item())
+        logits = model(x, pos_offset=pos_offset)
         loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
         opt.zero_grad(set_to_none=True)
         loss.backward()

@@ -94,17 +94,13 @@ class CausalSelfAttention(nn.Module):
         inv_freq = 1.0 / (rope_base ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
         t = torch.arange(ctx_len).float()
         freqs = torch.outer(t, inv_freq)
-        self.register_buffer("rope_cos", torch.cos(freqs), persistent=False)
-        self.register_buffer("rope_sin", torch.sin(freqs), persistent=False)
+        self.register_buffer("rope_complex", torch.polar(torch.ones_like(freqs), freqs), persistent=False)
 
     def _apply_rope(self, x):
         T = x.size(-2)
-        cos = self.rope_cos[:T].unsqueeze(0).unsqueeze(0)
-        sin = self.rope_sin[:T].unsqueeze(0).unsqueeze(0)
-        x1, x2 = x[..., 0::2], x[..., 1::2]
-        y1 = x1 * cos - x2 * sin
-        y2 = x1 * sin + x2 * cos
-        return torch.stack([y1, y2], dim=-1).flatten(-2)
+        x_complex = torch.view_as_complex(x.reshape(*x.shape[:-1], -1, 2).contiguous())
+        x_rotated = x_complex * self.rope_complex[:T]
+        return torch.view_as_real(x_rotated).flatten(-2)
 
     def forward(self, x):
         B, T, C = x.shape

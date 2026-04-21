@@ -196,7 +196,7 @@ def main():
 
         x, y = get_batch(train_data, batch_size, ctx_len, device)
         logits = model(x)
-        loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
+        loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1), label_smoothing=0.1)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

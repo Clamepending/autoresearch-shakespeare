@@ -179,13 +179,20 @@ def main():
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)
 
-    opt = torch.optim.AdamW(model.parameters(), lr=4e-3, weight_decay=0.0,
+    lr_max = 4e-3
+    lr_min = 4e-4
+    opt = torch.optim.AdamW(model.parameters(), lr=lr_max, weight_decay=0.0,
                             betas=(0.9, 0.95))
 
     t0 = time.time()
     step = 0
     model.train()
     while True:
+        t_elapsed = time.time() - t0
+        lr = lr_min + 0.5 * (lr_max - lr_min) * (1 + math.cos(math.pi * min(t_elapsed / TIME_BUDGET_S, 1.0)))
+        for g in opt.param_groups:
+            g['lr'] = lr
+
         x, y = get_batch(train_data, batch_size, ctx_len, device)
         logits = model(x)
         loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
@@ -197,7 +204,7 @@ def main():
         step += 1
         if step % 100 == 0:
             elapsed = time.time() - t0
-            print(f"step {step} loss {loss.item():.4f} elapsed {elapsed:.1f}s", flush=True)
+            print(f"step {step} loss {loss.item():.4f} lr {lr:.5f} elapsed {elapsed:.1f}s", flush=True)
 
         if time.time() - t0 > TIME_BUDGET_S:
             break

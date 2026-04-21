@@ -113,14 +113,14 @@ class CausalSelfAttention(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, d_model, n_head, dropout=0.0, attn_dropout=None, ctx_len=256):
+    def __init__(self, d_model, n_head, dropout=0.0, attn_dropout=None, ctx_len=256, d_ff=None):
         super().__init__()
         if attn_dropout is None:
             attn_dropout = dropout
         self.ln1 = nn.LayerNorm(d_model)
         self.attn = CausalSelfAttention(d_model, n_head, ctx_len=ctx_len, dropout=attn_dropout)
         self.ln2 = nn.LayerNorm(d_model)
-        self.mlp = SwiGLU(d_model, dropout=dropout)
+        self.mlp = SwiGLU(d_model, d_ff=d_ff, dropout=dropout)
 
     def forward(self, x):
         x = x + self.attn(self.ln1(x))
@@ -130,13 +130,13 @@ class Block(nn.Module):
 
 class Model(nn.Module):
     def __init__(self, vocab_size, d_model=128, n_head=4, n_layer=4,
-                 ctx_len=256, dropout=0.0, attn_dropout=None):
+                 ctx_len=256, dropout=0.0, attn_dropout=None, d_ff=None):
         super().__init__()
         assert ctx_len >= CTX_LEN_EVAL, "model must support eval ctx length"
         self.ctx_len = ctx_len
         self.tok_emb = nn.Embedding(vocab_size, d_model)
         self.blocks = nn.ModuleList(
-            [Block(d_model, n_head, dropout=dropout, attn_dropout=attn_dropout, ctx_len=ctx_len) for _ in range(n_layer)]
+            [Block(d_model, n_head, dropout=dropout, attn_dropout=attn_dropout, ctx_len=ctx_len, d_ff=d_ff) for _ in range(n_layer)]
         )
         self.ln = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, vocab_size, bias=False)
@@ -175,7 +175,7 @@ def main():
 
     batch_size = 32
     ctx_len = CTX_LEN_EVAL
-    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.2, attn_dropout=0.1)
+    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.2, attn_dropout=0.1, d_ff=512)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)

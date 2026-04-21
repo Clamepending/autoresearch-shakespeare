@@ -18,6 +18,7 @@ Anything else is fair game: architecture, optimizer, LR schedule, batch size,
 context length used during training, data augmentation, curriculum, etc.
 """
 import math
+import os
 import time
 import urllib.request
 from pathlib import Path
@@ -34,7 +35,7 @@ CKPT_PATH = Path("ckpt.pt")
 VAL_FRAC = 0.10
 CTX_LEN_EVAL = 256   # eval.py uses this; model must accept context >= 256
 TIME_BUDGET_S = 300  # 5 minutes wall clock inside the training loop
-SEED = 1337
+SEED = int(os.environ.get("SEED", 1337))
 
 
 def load_data():

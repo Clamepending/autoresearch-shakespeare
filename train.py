@@ -62,6 +62,21 @@ def pick_device():
 
 
 # ---- model (edit freely) ----------------------------------------------------
+class SwiGLU(nn.Module):
+    def __init__(self, d_model, d_ff=None, dropout=0.0):
+        super().__init__()
+        if d_ff is None:
+            d_ff = int(8 * d_model / 3)
+            d_ff = (d_ff + 7) & ~7
+        self.w_gate = nn.Linear(d_model, d_ff, bias=False)
+        self.w_value = nn.Linear(d_model, d_ff, bias=False)
+        self.w_down = nn.Linear(d_ff, d_model, bias=False)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        return self.dropout(self.w_down(F.silu(self.w_gate(x)) * self.w_value(x)))
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256):
         super().__init__()
@@ -98,12 +113,7 @@ class Block(nn.Module):
         self.ln1 = nn.LayerNorm(d_model)
         self.attn = CausalSelfAttention(d_model, n_head, dropout=dropout, ctx_len=ctx_len)
         self.ln2 = nn.LayerNorm(d_model)
-        self.mlp = nn.Sequential(
-            nn.Linear(d_model, 4 * d_model),
-            nn.GELU(),
-            nn.Linear(4 * d_model, d_model),
-            nn.Dropout(dropout),
-        )
+        self.mlp = SwiGLU(d_model, dropout=dropout)
 
     def forward(self, x):
         x = x + self.attn(self.ln1(x))

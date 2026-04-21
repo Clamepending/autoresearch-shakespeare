@@ -83,14 +83,9 @@ class CausalSelfAttention(nn.Module):
         assert d_model % n_head == 0
         self.n_head = n_head
         self.head_dim = d_model // n_head
+        self.dropout_p = dropout
         self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
         self.proj = nn.Linear(d_model, d_model, bias=False)
-        self.dropout = nn.Dropout(dropout)
-        self.register_buffer(
-            "mask",
-            torch.triu(torch.ones(ctx_len, ctx_len), diagonal=1).bool(),
-            persistent=False,
-        )
         inv_freq = 1.0 / (rope_base ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
         t = torch.arange(ctx_len).float()
         freqs = torch.outer(t, inv_freq)
@@ -110,11 +105,10 @@ class CausalSelfAttention(nn.Module):
         v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         q = self._apply_rope(q)
         k = self._apply_rope(k)
-        att = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        att = att.masked_fill(self.mask[:T, :T], float("-inf"))
-        att = F.softmax(att, dim=-1)
-        att = self.dropout(att)
-        y = att @ v
+        y = F.scaled_dot_product_attention(
+            q, k, v, is_causal=True,
+            dropout_p=self.dropout_p if self.training else 0.0,
+        )
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         return self.proj(y)
 

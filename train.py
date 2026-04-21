@@ -78,12 +78,11 @@ class SwiGLU(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256, rope_base=10000.0):
+    def __init__(self, d_model, n_head, ctx_len=256, rope_base=10000.0):
         super().__init__()
         assert d_model % n_head == 0
         self.n_head = n_head
         self.head_dim = d_model // n_head
-        self.dropout_p = dropout
         self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
         self.proj = nn.Linear(d_model, d_model, bias=False)
         inv_freq = 1.0 / (rope_base ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
@@ -105,10 +104,9 @@ class CausalSelfAttention(nn.Module):
         v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         q = self._apply_rope(q)
         k = self._apply_rope(k)
-        y = F.scaled_dot_product_attention(
-            q, k, v, is_causal=True,
-            dropout_p=self.dropout_p if self.training else 0.0,
-        )
+        # dropout_p intentionally omitted: on CPU, `dropout_p > 0` forces SDPA's
+        # math-eager backend and costs ~2.4× per-step. Regularization lives in SwiGLU.
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         return self.proj(y)
 
@@ -117,7 +115,7 @@ class Block(nn.Module):
     def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256):
         super().__init__()
         self.ln1 = nn.LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_head, dropout=dropout, ctx_len=ctx_len)
+        self.attn = CausalSelfAttention(d_model, n_head, ctx_len=ctx_len)
         self.ln2 = nn.LayerNorm(d_model)
         self.mlp = SwiGLU(d_model, dropout=dropout)
 
@@ -174,7 +172,7 @@ def main():
 
     batch_size = 32
     ctx_len = CTX_LEN_EVAL
-    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.0)
+    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.1)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)

@@ -174,7 +174,7 @@ def main():
     print(f"vocab={vocab_size} train_tokens={len(train_data)} val_tokens={len(val_data)}", flush=True)
 
     batch_size = 32
-    ctx_len = CTX_LEN_EVAL
+    ctx_len = 384
     model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.2, attn_dropout=0.1)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())

@@ -135,6 +135,13 @@ class Model(nn.Module):
         return self.head(h)
 
 
+# Pin class __module__ so torch.save/load references "train.<Class>" regardless
+# of whether this file is run as `__main__` or imported as `train`. eval.py
+# imports train, so the classes are resolvable either way.
+for _cls in (CausalSelfAttention, Block, Model):
+    _cls.__module__ = "train"
+
+
 # ---- training (edit freely) -------------------------------------------------
 def get_batch(data, batch_size, ctx_len, device):
     ix = torch.randint(0, len(data) - ctx_len - 1, (batch_size,))

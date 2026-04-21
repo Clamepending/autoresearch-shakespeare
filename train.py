@@ -181,7 +181,7 @@ def main():
     print(f"params={n_params/1e6:.2f}M", flush=True)
 
     lr_max = 4e-3
-    lr_min = 4e-4
+    lr_min = 1e-4
     opt = torch.optim.AdamW(model.parameters(), lr=lr_max, weight_decay=0.05,
                             betas=(0.9, 0.95))
 

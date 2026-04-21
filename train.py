@@ -78,13 +78,14 @@ class SwiGLU(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d_model, n_head, ctx_len=256, rope_base=10000.0):
+    def __init__(self, d_model, n_head, ctx_len=256, rope_base=10000.0, dropout=0.0):
         super().__init__()
         assert d_model % n_head == 0
         self.n_head = n_head
         self.head_dim = d_model // n_head
         self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
         self.proj = nn.Linear(d_model, d_model, bias=False)
+        self.attn_drop = nn.Dropout(dropout)
         inv_freq = 1.0 / (rope_base ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
         t = torch.arange(ctx_len).float()
         freqs = torch.outer(t, inv_freq)
@@ -108,14 +109,16 @@ class CausalSelfAttention(nn.Module):
         # math-eager backend and costs ~2.4× per-step. Regularization lives in SwiGLU.
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         y = y.transpose(1, 2).contiguous().view(B, T, C)
-        return self.proj(y)
+        return self.attn_drop(self.proj(y))
 
 
 class Block(nn.Module):
-    def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256):
+    def __init__(self, d_model, n_head, dropout=0.0, attn_dropout=None, ctx_len=256):
         super().__init__()
+        if attn_dropout is None:
+            attn_dropout = dropout
         self.ln1 = nn.LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_head, ctx_len=ctx_len)
+        self.attn = CausalSelfAttention(d_model, n_head, ctx_len=ctx_len, dropout=attn_dropout)
         self.ln2 = nn.LayerNorm(d_model)
         self.mlp = SwiGLU(d_model, dropout=dropout)
 
@@ -127,13 +130,13 @@ class Block(nn.Module):
 
 class Model(nn.Module):
     def __init__(self, vocab_size, d_model=128, n_head=4, n_layer=4,
-                 ctx_len=256, dropout=0.0):
+                 ctx_len=256, dropout=0.0, attn_dropout=None):
         super().__init__()
         assert ctx_len >= CTX_LEN_EVAL, "model must support eval ctx length"
         self.ctx_len = ctx_len
         self.tok_emb = nn.Embedding(vocab_size, d_model)
         self.blocks = nn.ModuleList(
-            [Block(d_model, n_head, dropout=dropout, ctx_len=ctx_len) for _ in range(n_layer)]
+            [Block(d_model, n_head, dropout=dropout, attn_dropout=attn_dropout, ctx_len=ctx_len) for _ in range(n_layer)]
         )
         self.ln = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, vocab_size, bias=False)
@@ -172,7 +175,7 @@ def main():
 
     batch_size = 32
     ctx_len = CTX_LEN_EVAL
-    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.2)
+    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.15, attn_dropout=0.1)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)

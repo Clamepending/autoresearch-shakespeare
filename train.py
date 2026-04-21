@@ -188,6 +188,9 @@ def main():
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)
+    t_compile_start = time.time()
+    model = torch.compile(model)
+    print(f"torch.compile wrapped in {time.time()-t_compile_start:.2f}s (JIT happens on first forward)", flush=True)
 
     opt = torch.optim.AdamW(model.parameters(), lr=4e-3, weight_decay=0.0,
                             betas=(0.9, 0.95))
@@ -217,7 +220,8 @@ def main():
 
     model.eval()
     model.cpu()
-    torch.save({"state_dict": model.state_dict(), "cfg": model_cfg}, CKPT_PATH)
+    state_dict = getattr(model, "_orig_mod", model).state_dict()
+    torch.save({"state_dict": state_dict, "cfg": model_cfg}, CKPT_PATH)
     print(f"saved {CKPT_PATH}", flush=True)
 
 

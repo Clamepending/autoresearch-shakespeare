@@ -175,6 +175,7 @@ def main():
 
     batch_size = 32
     ctx_len = CTX_LEN_EVAL
+    input_corrupt_p = 0.05
     model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.2, attn_dropout=0.1)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
@@ -195,6 +196,10 @@ def main():
             g['lr'] = lr
 
         x, y = get_batch(train_data, batch_size, ctx_len, device)
+        if input_corrupt_p > 0:
+            mask = torch.rand(x.shape, device=device) < input_corrupt_p
+            random_tokens = torch.randint(0, vocab_size, x.shape, device=device)
+            x = torch.where(mask, random_tokens, x)
         logits = model(x)
         loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
         opt.zero_grad(set_to_none=True)

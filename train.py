@@ -62,6 +62,17 @@ def pick_device():
 
 
 # ---- model (edit freely) ----------------------------------------------------
+class RMSNorm(nn.Module):
+    def __init__(self, d_model, eps=1e-5):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(d_model))
+
+    def forward(self, x):
+        rms = x.pow(2).mean(dim=-1, keepdim=True).add(self.eps).rsqrt()
+        return x * rms * self.weight
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256):
         super().__init__()
@@ -95,9 +106,9 @@ class CausalSelfAttention(nn.Module):
 class Block(nn.Module):
     def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256):
         super().__init__()
-        self.ln1 = nn.LayerNorm(d_model)
+        self.ln1 = RMSNorm(d_model)
         self.attn = CausalSelfAttention(d_model, n_head, dropout=dropout, ctx_len=ctx_len)
-        self.ln2 = nn.LayerNorm(d_model)
+        self.ln2 = RMSNorm(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, 4 * d_model),
             nn.GELU(),
@@ -122,7 +133,7 @@ class Model(nn.Module):
         self.blocks = nn.ModuleList(
             [Block(d_model, n_head, dropout=dropout, ctx_len=ctx_len) for _ in range(n_layer)]
         )
-        self.ln = nn.LayerNorm(d_model)
+        self.ln = RMSNorm(d_model)
         self.head = nn.Linear(d_model, vocab_size, bias=False)
 
     def forward(self, x):

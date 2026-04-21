@@ -159,7 +159,7 @@ def main():
     train_data, val_data, vocab_size = load_data()
     print(f"vocab={vocab_size} train_tokens={len(train_data)} val_tokens={len(val_data)}", flush=True)
 
-    batch_size = 32
+    batch_size = 64
     ctx_len = CTX_LEN_EVAL
     model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.0)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)

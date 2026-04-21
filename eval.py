@@ -2,11 +2,12 @@
 Frozen val-bpb judge. NEVER edit this file.
 
 Contract with train.py:
-  - train.py, when run, writes `ckpt.pt` containing a dict with key "model"
-    that is an nn.Module mapping (B, T) LongTensor token indices -> (B, T, V)
-    float logits. The model's vocab must match the one eval.py derives below.
-  - train.py must be importable as a module (keep training under `if __name__
-    == "__main__":`), so torch.load can find any custom classes it references.
+  - train.py, when run, writes `ckpt.pt` containing a dict:
+        {"state_dict": <model state_dict>, "cfg": <dict>}
+  - train.py must define `build_model(vocab_size, **cfg) -> nn.Module` that
+    maps (B, T) LongTensor token indices -> (B, T, V) float logits.
+  - train.py must be importable without side effects (keep training under
+    `if __name__ == "__main__":`).
 
 Evaluation protocol:
   - Dataset: tinyshakespeare, last 10% by char = val.
@@ -54,7 +55,8 @@ def main():
 
     val, vocab_size = val_tensor()
     ckpt = torch.load(CKPT_PATH, map_location="cpu", weights_only=False)
-    model = ckpt["model"]
+    model = train.build_model(vocab_size=vocab_size, **ckpt["cfg"])
+    model.load_state_dict(ckpt["state_dict"])
     model.eval()
     # Judge runs on CPU: deterministic, device-independent scoring.
     device = torch.device("cpu")

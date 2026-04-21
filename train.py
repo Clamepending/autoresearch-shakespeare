@@ -2,20 +2,20 @@
 autoresearch-shakespeare training script. Edit freely to lower val_bpb.
 
 Contract (required by eval.py):
-  - Running `uv run python train.py` writes `ckpt.pt` containing {"model": nn.Module}.
-    The model maps (B, T) LongTensor token indices -> (B, T, V) float logits, where V
-    matches the tinyshakespeare char vocab (sorted unique chars of
-    data/input.txt).
-  - This module must be importable without side effects — keep all training
-    logic under `if __name__ == "__main__":` so eval.py can `import train`
-    to make custom classes available at unpickle time.
-  - Training must complete within TIME_BUDGET_S wall-clock seconds (soft-enforced
-    inside the training loop below); going over is OK but costs you cycle time.
+  - Running `uv run python train.py` writes `ckpt.pt` containing a dict:
+        {"state_dict": <model state_dict>, "cfg": <dict>}
+  - This module must define `build_model(vocab_size, **cfg) -> nn.Module` that
+    reconstructs an `nn.Module` whose forward maps (B, T) LongTensor token
+    indices -> (B, T, V) float logits. eval.py calls:
+        m = train.build_model(vocab_size=V, **ckpt["cfg"])
+        m.load_state_dict(ckpt["state_dict"])
+  - Training must complete within TIME_BUDGET_S wall-clock seconds
+    (soft-enforced in the loop); going over is OK but costs you cycle time.
+  - Keep training logic under `if __name__ == "__main__":` so eval.py can
+    `import train` without side effects.
 
 Anything else is fair game: architecture, optimizer, LR schedule, batch size,
 context length used during training, data augmentation, curriculum, etc.
-
-Baseline below: tiny causal transformer, AdamW, ~2 minutes of training on MPS.
 """
 import math
 import time
@@ -135,11 +135,11 @@ class Model(nn.Module):
         return self.head(h)
 
 
-# Pin class __module__ so torch.save/load references "train.<Class>" regardless
-# of whether this file is run as `__main__` or imported as `train`. eval.py
-# imports train, so the classes are resolvable either way.
-for _cls in (CausalSelfAttention, Block, Model):
-    _cls.__module__ = "train"
+def build_model(vocab_size, **cfg):
+    """Reconstruct the model for eval. Keep this signature: eval.py calls
+    `build_model(vocab_size=V, **ckpt["cfg"])`. Edit the Model class and/or
+    this function together so they stay in sync."""
+    return Model(vocab_size=vocab_size, **cfg)
 
 
 # ---- training (edit freely) -------------------------------------------------
@@ -159,15 +159,15 @@ def main():
     train_data, val_data, vocab_size = load_data()
     print(f"vocab={vocab_size} train_tokens={len(train_data)} val_tokens={len(val_data)}", flush=True)
 
-    model = Model(vocab_size=vocab_size, ctx_len=CTX_LEN_EVAL).to(device)
+    batch_size = 32
+    ctx_len = CTX_LEN_EVAL
+    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.0)
+    model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)
 
     opt = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.1,
                             betas=(0.9, 0.95))
-
-    batch_size = 32
-    ctx_len = CTX_LEN_EVAL
 
     t0 = time.time()
     step = 0
@@ -194,7 +194,7 @@ def main():
 
     model.eval()
     model.cpu()
-    torch.save({"model": model}, CKPT_PATH)
+    torch.save({"state_dict": model.state_dict(), "cfg": model_cfg}, CKPT_PATH)
     print(f"saved {CKPT_PATH}", flush=True)
 
 

@@ -78,7 +78,7 @@ class SwiGLU(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256):
+    def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256, rope_base=10000.0):
         super().__init__()
         assert d_model % n_head == 0
         self.n_head = n_head
@@ -91,6 +91,20 @@ class CausalSelfAttention(nn.Module):
             torch.triu(torch.ones(ctx_len, ctx_len), diagonal=1).bool(),
             persistent=False,
         )
+        inv_freq = 1.0 / (rope_base ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
+        t = torch.arange(ctx_len).float()
+        freqs = torch.outer(t, inv_freq)
+        self.register_buffer("rope_cos", torch.cos(freqs), persistent=False)
+        self.register_buffer("rope_sin", torch.sin(freqs), persistent=False)
+
+    def _apply_rope(self, x):
+        T = x.size(-2)
+        cos = self.rope_cos[:T].unsqueeze(0).unsqueeze(0)
+        sin = self.rope_sin[:T].unsqueeze(0).unsqueeze(0)
+        x1, x2 = x[..., 0::2], x[..., 1::2]
+        y1 = x1 * cos - x2 * sin
+        y2 = x1 * sin + x2 * cos
+        return torch.stack([y1, y2], dim=-1).flatten(-2)
 
     def forward(self, x):
         B, T, C = x.shape
@@ -98,6 +112,8 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
         v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+        q = self._apply_rope(q)
+        k = self._apply_rope(k)
         att = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
         att = att.masked_fill(self.mask[:T, :T], float("-inf"))
         att = F.softmax(att, dim=-1)
@@ -128,7 +144,6 @@ class Model(nn.Module):
         assert ctx_len >= CTX_LEN_EVAL, "model must support eval ctx length"
         self.ctx_len = ctx_len
         self.tok_emb = nn.Embedding(vocab_size, d_model)
-        self.pos_emb = nn.Embedding(ctx_len, d_model)
         self.blocks = nn.ModuleList(
             [Block(d_model, n_head, dropout=dropout, ctx_len=ctx_len) for _ in range(n_layer)]
         )
@@ -136,9 +151,7 @@ class Model(nn.Module):
         self.head = nn.Linear(d_model, vocab_size, bias=False)
 
     def forward(self, x):
-        B, T = x.shape
-        pos = torch.arange(T, device=x.device)
-        h = self.tok_emb(x) + self.pos_emb(pos)
+        h = self.tok_emb(x)
         for blk in self.blocks:
             h = blk(h)
         h = self.ln(h)

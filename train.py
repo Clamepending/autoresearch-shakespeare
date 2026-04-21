@@ -166,7 +166,7 @@ def main():
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)
 
-    opt = torch.optim.AdamW(model.parameters(), lr=4e-3, weight_decay=0.1,
+    opt = torch.optim.AdamW(model.parameters(), lr=4e-3, weight_decay=0.0,
                             betas=(0.9, 0.95))
 
     t0 = time.time()

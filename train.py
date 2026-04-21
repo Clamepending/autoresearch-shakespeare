@@ -124,6 +124,7 @@ class Model(nn.Module):
         )
         self.ln = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, vocab_size, bias=False)
+        self.head.weight = self.tok_emb.weight
 
     def forward(self, x):
         B, T = x.shape

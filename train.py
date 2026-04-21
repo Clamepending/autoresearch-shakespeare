@@ -78,13 +78,14 @@ class SwiGLU(nn.Module):
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d_model, n_head, ctx_len=256, rope_base=10000.0):
+    def __init__(self, d_model, n_head, ctx_len=256, rope_base=10000.0, dropout=0.0):
         super().__init__()
         assert d_model % n_head == 0
         self.n_head = n_head
         self.head_dim = d_model // n_head
         self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
         self.proj = nn.Linear(d_model, d_model, bias=False)
+        self.attn_drop = nn.Dropout(dropout)
         inv_freq = 1.0 / (rope_base ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
         t = torch.arange(ctx_len).float()
         freqs = torch.outer(t, inv_freq)
@@ -108,14 +109,14 @@ class CausalSelfAttention(nn.Module):
         # math-eager backend and costs ~2.4× per-step. Regularization lives in SwiGLU.
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         y = y.transpose(1, 2).contiguous().view(B, T, C)
-        return self.proj(y)
+        return self.attn_drop(self.proj(y))
 
 
 class Block(nn.Module):
     def __init__(self, d_model, n_head, dropout=0.0, ctx_len=256):
         super().__init__()
         self.ln1 = nn.LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_head, ctx_len=ctx_len)
+        self.attn = CausalSelfAttention(d_model, n_head, ctx_len=ctx_len, dropout=dropout)
         self.ln2 = nn.LayerNorm(d_model)
         self.mlp = SwiGLU(d_model, dropout=dropout)
 

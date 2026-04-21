@@ -175,7 +175,7 @@ def main():
 
     batch_size = 32
     ctx_len = CTX_LEN_EVAL
-    model_cfg = dict(d_model=128, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.2, attn_dropout=0.1)
+    model_cfg = dict(d_model=192, n_head=4, n_layer=4, ctx_len=ctx_len, dropout=0.2, attn_dropout=0.1)
     model = build_model(vocab_size=vocab_size, **model_cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"params={n_params/1e6:.2f}M", flush=True)

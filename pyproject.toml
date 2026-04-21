@@ -1,0 +1,9 @@
+[project]
+name = "autoresearch-shakespeare"
+version = "0.0.1"
+description = "Character-LM autoresearch reduction: agent edits train.py, eval.py judges."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "torch>=2.2",
+]

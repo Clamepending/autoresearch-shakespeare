@@ -182,7 +182,7 @@ def main():
 
     lr_max = 4e-3
     lr_min = 4e-4
-    opt = torch.optim.AdamW(model.parameters(), lr=lr_max, weight_decay=0.0,
+    opt = torch.optim.AdamW(model.parameters(), lr=lr_max, weight_decay=0.05,
                             betas=(0.9, 0.95))
 
     t0 = time.time()
